@@ -22,6 +22,12 @@ variable "aws_endpoint_override" {
   default     = "http://localhost.localstack.cloud:4566"
 }
 
+variable "client_data_encryption_key" {
+  description = "Base64 AES-256 key used to encrypt client sensitive data in application layer"
+  type        = string
+  sensitive   = true
+}
+
 variable "lambda_artifact_path" {
   description = "Path to Lambda Java artifact (JAR)"
   type        = string

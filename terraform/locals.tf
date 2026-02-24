@@ -3,14 +3,15 @@ locals {
   state_machine_arn  = "arn:aws:states:${var.aws_region}:000000000000:stateMachine:${local.state_machine_name}"
 
   common_lambda_environment = {
-    VEHICLES_TABLE        = aws_dynamodb_table.vehicles.name
-    CLIENTS_TABLE         = aws_dynamodb_table.clients.name
-    BUYERS_TABLE          = aws_dynamodb_table.clients.name
-    SALES_TABLE           = aws_dynamodb_table.sales.name
-    RESERVATIONS_TABLE    = aws_dynamodb_table.reservations.name
-    AWS_ENDPOINT_OVERRIDE = var.aws_endpoint_override
-    SALES_QUEUE_URL       = aws_sqs_queue.sales_notifications.id
-    STATUS_PRICE_INDEX    = "status-price-index"
+    VEHICLES_TABLE             = aws_dynamodb_table.vehicles.name
+    CLIENTS_TABLE              = aws_dynamodb_table.clients.name
+    BUYERS_TABLE               = aws_dynamodb_table.clients.name
+    SALES_TABLE                = aws_dynamodb_table.sales.name
+    RESERVATIONS_TABLE         = aws_dynamodb_table.reservations.name
+    AWS_ENDPOINT_OVERRIDE      = var.aws_endpoint_override
+    CLIENT_DATA_ENCRYPTION_KEY = var.client_data_encryption_key
+    SALES_QUEUE_URL            = aws_sqs_queue.sales_notifications.id
+    STATUS_PRICE_INDEX         = "status-price-index"
   }
 
   lambda_definitions = {

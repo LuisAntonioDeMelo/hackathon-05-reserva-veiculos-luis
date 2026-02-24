@@ -61,3 +61,8 @@ Destroy:
   4. `terraform fmt -check`
   5. `terraform validate`
   6. `terraform apply -auto-approve`
+
+## Seguranca de dados sensiveis
+- Variavel Terraform obrigatoria: `client_data_encryption_key`
+- Essa variavel alimenta `CLIENT_DATA_ENCRYPTION_KEY` em todas as Lambdas.
+- O valor deve ser Base64 de 32 bytes (AES-256).

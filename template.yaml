@@ -7,6 +7,10 @@ Parameters:
     Type: String
     Default: ""
     Description: Optional endpoint override for LocalStack (example http://localhost.localstack.cloud:4566)
+  ClientDataEncryptionKey:
+    Type: String
+    NoEcho: true
+    Description: Base64 AES-256 key used for client sensitive data encryption
 
 Globals:
   Function:
@@ -23,6 +27,7 @@ Globals:
         SALES_TABLE: !Ref SalesTable
         RESERVATIONS_TABLE: !Ref ReservationsTable
         AWS_ENDPOINT_OVERRIDE: !Ref AwsEndpointOverride
+        CLIENT_DATA_ENCRYPTION_KEY: !Ref ClientDataEncryptionKey
         SALES_QUEUE_URL: !Ref SalesNotificationsQueue
         STATUS_PRICE_INDEX: status-price-index
 

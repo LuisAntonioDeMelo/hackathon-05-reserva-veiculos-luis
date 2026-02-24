@@ -30,10 +30,14 @@
 
 **Atributos**
 - `fullName` (S)
-- `email` (S)
-- `documentNumber` (S)
-- `paymentKey` (S)
-- `address` (S)
+- `emailEncrypted` (S) -> `enc:v1:<ivBase64>:<cipherBase64>`
+- `emailHash` (S, SHA-256)
+- `documentNumberEncrypted` (S) -> `enc:v1:<ivBase64>:<cipherBase64>`
+- `documentNumberHash` (S, SHA-256)
+- `documentNumberLast4` (S)
+- `paymentKeyEncrypted` (S) -> `enc:v1:<ivBase64>:<cipherBase64>`
+- `paymentKeyHash` (S, SHA-256)
+- `addressEncrypted` (S) -> `enc:v1:<ivBase64>:<cipherBase64>`
 - `status` (S) -> `ACTIVE | INACTIVE`
 - `createdAt` (S, ISO-8601)
 

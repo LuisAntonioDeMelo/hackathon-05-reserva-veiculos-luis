@@ -3,6 +3,7 @@ param(
     [string]$Region = "us-east-1",
     [string]$Endpoint = "http://localhost:4566",
     [string]$ArtifactBucket = "sam-artifacts-local",
+    [string]$ClientDataEncryptionKey = "",
     [string]$ComposeFile = ".\localstack\docker-compose.yaml"
 )
 
@@ -39,6 +40,15 @@ if (-not $env:AWS_ACCESS_KEY_ID) { $env:AWS_ACCESS_KEY_ID = "test" }
 if (-not $env:AWS_SECRET_ACCESS_KEY) { $env:AWS_SECRET_ACCESS_KEY = "test" }
 if (-not $env:AWS_DEFAULT_REGION) { $env:AWS_DEFAULT_REGION = $Region }
 if (-not $env:AWS_REGION) { $env:AWS_REGION = $Region }
+if ([string]::IsNullOrWhiteSpace($ClientDataEncryptionKey)) {
+  if (-not [string]::IsNullOrWhiteSpace($env:CLIENT_DATA_ENCRYPTION_KEY)) {
+    $ClientDataEncryptionKey = $env:CLIENT_DATA_ENCRYPTION_KEY
+  } else {
+    $bytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $ClientDataEncryptionKey = [Convert]::ToBase64String($bytes)
+  }
+}
 
 Write-Host "1/8 - Starting LocalStack"
 $healthUrl = "$Endpoint/_localstack/health"
@@ -115,7 +125,7 @@ Invoke-External -Command {
     --template-file $PackagedTemplate `
     --stack-name $StackName `
     --capabilities CAPABILITY_IAM `
-    --parameter-overrides AwsEndpointOverride=http://localhost.localstack.cloud:4566
+    --parameter-overrides AwsEndpointOverride=http://localhost.localstack.cloud:4566 ClientDataEncryptionKey=$ClientDataEncryptionKey
 } -ErrorMessage "CloudFormation deploy failed."
 
 Write-Host "7/8 - Reading stack outputs"

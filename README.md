@@ -9,6 +9,7 @@ Implementacao alinhada ao desenho de arquitetura:
 - Integracao de pagamento mock/callback
 - Notificacao de venda concluida via `SQS`
 - Observabilidade com CloudWatch Logs, Alarms, Dashboard e X-Ray
+- Protecao de dados sensiveis de cliente com criptografia AES-256 (app-layer) + hash
 
 ## Arquitetura implementada
 - `VehicleApi` (`AWS::Serverless::HttpApi`)
@@ -93,6 +94,8 @@ Exemplo `POST /payments/callback`:
 
 ## Schemas DynamoDB
 Schemas completos: [docs/dynamodb-schemas.md](E:\Dev\Hackaton-projeto-5\docs\dynamodb-schemas.md)
+Curls dos endpoints: [docs/curl-endpoints.md](E:\Dev\Hackaton-projeto-5\docs\curl-endpoints.md)
+Controles de seguranca para dados sensiveis: [docs/security-sensitive-data.md](E:\Dev\Hackaton-projeto-5\docs\security-sensitive-data.md)
 
 ## Deploy local (automatico) - SAM/CloudFormation
 Pre-reqs:
@@ -126,9 +129,19 @@ Comando:
 .\deploy-terraform-localstack.ps1
 ```
 
+Opcao Bash (Linux/macOS/Git Bash):
+```bash
+./deploy.sh
+```
+
 Destroy:
 ```powershell
 .\deploy-terraform-localstack.ps1 -Destroy
+```
+
+Destroy (Bash):
+```bash
+./deploy.sh --destroy
 ```
 
 Detalhes da arquitetura Terraform:
@@ -142,3 +155,8 @@ Pipeline de deploy Terraform no GitHub Actions:
   - `terraform fmt -check`
   - `terraform validate`
   - `terraform apply -auto-approve`
+
+## Deploy.sh (Bash)
+- Script unico para LocalStack:
+  - `./deploy.sh` (modo `terraform`, default)
+  - `./deploy.sh --mode sam` (SAM/CloudFormation)

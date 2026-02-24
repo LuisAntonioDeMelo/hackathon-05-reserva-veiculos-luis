@@ -3,6 +3,7 @@ param(
     [string]$Endpoint = "http://localhost:4566",
     [string]$ComposeFile = ".\localstack\docker-compose.yaml",
     [string]$TerraformPath = ".\terraform",
+    [string]$ClientDataEncryptionKey = "",
     [switch]$Destroy
 )
 
@@ -37,6 +38,15 @@ if (-not $env:AWS_ACCESS_KEY_ID) { $env:AWS_ACCESS_KEY_ID = "test" }
 if (-not $env:AWS_SECRET_ACCESS_KEY) { $env:AWS_SECRET_ACCESS_KEY = "test" }
 if (-not $env:AWS_DEFAULT_REGION) { $env:AWS_DEFAULT_REGION = $Region }
 if (-not $env:AWS_REGION) { $env:AWS_REGION = $Region }
+if ([string]::IsNullOrWhiteSpace($ClientDataEncryptionKey)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:CLIENT_DATA_ENCRYPTION_KEY)) {
+        $ClientDataEncryptionKey = $env:CLIENT_DATA_ENCRYPTION_KEY
+    } else {
+        $bytes = New-Object byte[] 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+        $ClientDataEncryptionKey = [Convert]::ToBase64String($bytes)
+    }
+}
 
 $healthUrl = "$Endpoint/_localstack/health"
 Write-Host "1/6 - Starting LocalStack"
@@ -82,9 +92,9 @@ Invoke-External -Command { terraform init -input=false } -ErrorMessage "Terrafor
 
 Write-Host "5/6 - Running Terraform"
 if ($Destroy) {
-    Invoke-External -Command { terraform destroy -auto-approve -input=false } -ErrorMessage "Terraform destroy failed."
+    Invoke-External -Command { terraform destroy -auto-approve -input=false -var "client_data_encryption_key=$ClientDataEncryptionKey" } -ErrorMessage "Terraform destroy failed."
 } else {
-    Invoke-External -Command { terraform apply -auto-approve -input=false } -ErrorMessage "Terraform apply failed."
+    Invoke-External -Command { terraform apply -auto-approve -input=false -var "client_data_encryption_key=$ClientDataEncryptionKey" } -ErrorMessage "Terraform apply failed."
 }
 
 Write-Host "6/6 - Terraform outputs"
