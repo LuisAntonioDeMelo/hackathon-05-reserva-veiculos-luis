@@ -11,7 +11,7 @@ Parameters:
 Globals:
   Function:
     Runtime: java17
-    CodeUri: Clients/target/function.jar
+    CodeUri: hackaton-projeto-5/target/function.jar
     Timeout: 30
     MemorySize: 512
     Tracing: Active

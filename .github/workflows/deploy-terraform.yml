@@ -7,7 +7,7 @@ on:
       - main
     paths:
       - "terraform/**"
-      - "Clients/**"
+      - "hackaton-projeto-5/**"
       - ".github/workflows/deploy-terraform.yml"
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
           cache: maven
 
       - name: Build Lambda artifact
-        run: mvn -f Clients/pom.xml clean package
+        run: mvn -f hackaton-projeto-5/pom.xml clean package
 
       - name: Wait LocalStack health
         run: |

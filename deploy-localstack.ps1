@@ -8,8 +8,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $PackagedTemplate = "$PSScriptRoot\template.packaged.yaml"
-$ClientsPath = "$PSScriptRoot\Clients"
-$FunctionArtifact = "$ClientsPath\target\function.jar"
+$ProjectPath = "$PSScriptRoot\hackaton-projeto-5"
+$FunctionArtifact = "$ProjectPath\target\function.jar"
 
 function Invoke-External {
   param(
@@ -71,14 +71,14 @@ if ($attempt -ge 45) {
 
 Write-Host "3/8 - Building Java artifacts"
 if (Get-Command mvn -ErrorAction SilentlyContinue) {
-  Push-Location $ClientsPath
+  Push-Location $ProjectPath
   Invoke-External -Command { mvn clean package } -ErrorMessage "Maven build failed."
   Pop-Location
 } else {
   Write-Host "Maven not found, using Docker Maven image"
   Invoke-External -Command {
     docker run --rm `
-      -v "${ClientsPath}:/app" `
+      -v "${ProjectPath}:/app" `
       -v "${env:USERPROFILE}\.m2:/root/.m2" `
       -w /app `
       maven:3.9.9-eclipse-temurin-17 `
@@ -106,7 +106,7 @@ CodeUri:
       Bucket: $ArtifactBucket
       Key: function.jar
 "@
-$packaged = $rawTemplate.Replace("CodeUri: Clients/target/function.jar", $codeUriYaml.TrimEnd())
+$packaged = $rawTemplate.Replace("CodeUri: hackaton-projeto-5/target/function.jar", $codeUriYaml.TrimEnd())
 Set-Content -Path $PackagedTemplate -Value $packaged -Encoding UTF8
 
 Write-Host "6/8 - Deploying stack to LocalStack"

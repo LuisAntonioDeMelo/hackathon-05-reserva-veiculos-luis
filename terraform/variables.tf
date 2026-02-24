@@ -25,7 +25,7 @@ variable "aws_endpoint_override" {
 variable "lambda_artifact_path" {
   description = "Path to Lambda Java artifact (JAR)"
   type        = string
-  default     = "../Clients/target/function.jar"
+  default     = "../hackaton-projeto-5/target/function.jar"
 }
 
 variable "lambda_timeout_seconds" {
