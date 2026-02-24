@@ -1,0 +1,561 @@
+﻿AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Vehicle dealership serverless platform with purchase Saga on Step Functions
+
+Parameters:
+  AwsEndpointOverride:
+    Type: String
+    Default: ""
+    Description: Optional endpoint override for LocalStack (example http://localhost.localstack.cloud:4566)
+
+Globals:
+  Function:
+    Runtime: java17
+    CodeUri: Clients/target/function.jar
+    Timeout: 30
+    MemorySize: 512
+    Tracing: Active
+    Environment:
+      Variables:
+        VEHICLES_TABLE: !Ref VehiclesTable
+        CLIENTS_TABLE: !Ref ClientsTable
+        BUYERS_TABLE: !Ref ClientsTable
+        SALES_TABLE: !Ref SalesTable
+        RESERVATIONS_TABLE: !Ref ReservationsTable
+        AWS_ENDPOINT_OVERRIDE: !Ref AwsEndpointOverride
+        SALES_QUEUE_URL: !Ref SalesNotificationsQueue
+        STATUS_PRICE_INDEX: status-price-index
+
+Resources:
+  VehicleApiV2:
+    Type: AWS::Serverless::HttpApi
+
+  VehiclesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: vehicleId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: price
+          AttributeType: N
+      KeySchema:
+        - AttributeName: vehicleId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: status-price-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: price
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  ClientsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: clientId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: clientId
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  SalesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: saleId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: saleId
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  ReservationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: reservationId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: reservedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: reservationId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: status-reservedAt-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: reservedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  SalesNotificationsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: vehicle-sales-notifications
+      VisibilityTimeout: 60
+
+  CreateVehicleFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.CreateVehicleHandler::handleRequest
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref VehiclesTable
+      Events:
+        CreateVehicle:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /vehicles
+            Method: POST
+
+  UpdateVehicleFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.UpdateVehicleHandler::handleRequest
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref VehiclesTable
+      Events:
+        UpdateVehicle:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /vehicles/{vehicleId}
+            Method: PUT
+
+  ListVehiclesForSaleFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.ListVehiclesForSaleHandler::handleRequest
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref VehiclesTable
+      Events:
+        ListVehiclesForSale:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /vehicles/for-sale
+            Method: GET
+
+  ListSoldVehiclesFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.ListSoldVehiclesHandler::handleRequest
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref VehiclesTable
+      Events:
+        ListSoldVehicles:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /vehicles/sold
+            Method: GET
+
+  CreateClientFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.CreateClientHandler::handleRequest
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ClientsTable
+      Events:
+        CreateClient:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /clients
+            Method: POST
+        CreateBuyerLegacy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /buyers
+            Method: POST
+
+  StartPurchaseFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.StartPurchaseSagaHandler::handleRequest
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref PurchaseSagaStateMachine
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref VehiclesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ClientsTable
+        - Statement:
+            Effect: Allow
+            Action: states:StartExecution
+            Resource: !Ref PurchaseSagaStateMachine
+      Events:
+        StartPurchase:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /sales
+            Method: POST
+
+  GetSaleFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.GetSaleHandler::handleRequest
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref SalesTable
+      Events:
+        GetSale:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /sales/{saleId}
+            Method: GET
+
+  GetReservationFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.GetReservationHandler::handleRequest
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ReservationsTable
+      Events:
+        GetReservation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /reservations/{reservationId}
+            Method: GET
+
+  PaymentCallbackFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.handlers.PaymentCallbackHandler::handleRequest
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SalesTable
+      Events:
+        PaymentCallback:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VehicleApiV2
+            Path: /payments/callback
+            Method: POST
+
+  ValidateClientFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.saga.ValidateClientHandler::handleRequest
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ClientsTable
+
+  ReserveVehicleFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.saga.ReserveVehicleHandler::handleRequest
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref VehiclesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ReservationsTable
+
+  GeneratePaymentCodeFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.saga.GeneratePaymentCodeHandler::handleRequest
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref VehiclesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SalesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ReservationsTable
+
+  CheckPaymentStatusFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.saga.CheckPaymentStatusHandler::handleRequest
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SalesTable
+
+  CompleteSaleFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.saga.CompleteSaleHandler::handleRequest
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref VehiclesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SalesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ReservationsTable
+
+  CancelSaleFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: hackthon.fiap.luis.saga.CancelSaleHandler::handleRequest
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref VehiclesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SalesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ReservationsTable
+
+  PurchaseSagaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/vendedlogs/states/vehicle-purchase-saga
+      RetentionInDays: 14
+
+  PurchaseSagaStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: vehicle-purchase-saga
+      Type: STANDARD
+      Tracing:
+        Enabled: true
+      Logging:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt PurchaseSagaLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ValidateClientFn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ReserveVehicleFn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref GeneratePaymentCodeFn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref CheckPaymentStatusFn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref CompleteSaleFn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref CancelSaleFn
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt SalesNotificationsQueue.QueueName
+      Definition:
+        StartAt: ValidateClient
+        States:
+          ValidateClient:
+            Type: Task
+            Resource: !GetAtt ValidateClientFn.Arn
+            Next: CheckCancelBeforeReserve
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: CancelSale
+          CheckCancelBeforeReserve:
+            Type: Choice
+            Choices:
+              - Variable: $.customerCancelled
+                BooleanEquals: true
+                Next: CancelSale
+            Default: ReserveVehicle
+          ReserveVehicle:
+            Type: Task
+            Resource: !GetAtt ReserveVehicleFn.Arn
+            Next: GeneratePaymentCode
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: CancelSale
+          GeneratePaymentCode:
+            Type: Task
+            Resource: !GetAtt GeneratePaymentCodeFn.Arn
+            Next: CheckCancelBeforePayment
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: CancelSale
+          CheckCancelBeforePayment:
+            Type: Choice
+            Choices:
+              - Variable: $.customerCancelled
+                BooleanEquals: true
+                Next: CancelSale
+            Default: WaitPayment
+          WaitPayment:
+            Type: Wait
+            Seconds: 5
+            Next: CheckPaymentStatus
+          CheckPaymentStatus:
+            Type: Task
+            Resource: !GetAtt CheckPaymentStatusFn.Arn
+            Next: PaymentDecision
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: CancelSale
+          PaymentDecision:
+            Type: Choice
+            Choices:
+              - Variable: $.paymentStatus
+                StringEquals: PAID
+                Next: CompleteSale
+              - Variable: $.shouldRetry
+                BooleanEquals: true
+                Next: WaitPayment
+            Default: CancelSale
+          CompleteSale:
+            Type: Task
+            Resource: !GetAtt CompleteSaleFn.Arn
+            Next: NotifySale
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: CancelSale
+          NotifySale:
+            Type: Task
+            Resource: arn:aws:states:::sqs:sendMessage
+            Parameters:
+              QueueUrl: !Ref SalesNotificationsQueue
+              MessageBody:
+                saleId.$: $.saleId
+                reservationId.$: $.reservationId
+                vehicleId.$: $.vehicleId
+                clientId.$: $.clientId
+                totalPrice.$: $.totalPrice
+                paymentCode.$: $.paymentCode
+                status: COMPLETED
+            End: true
+          CancelSale:
+            Type: Task
+            Resource: !GetAtt CancelSaleFn.Arn
+            End: true
+
+  StartPurchaseErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: start-purchase-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StartPurchaseFn
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  SagaFailedExecutionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: purchase-saga-failures
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref PurchaseSagaStateMachine
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  OperationsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: vehicle-platform-ops
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Lambda Errors",
+                "view": "timeSeries",
+                "stacked": false,
+                "metrics": [
+                  ["AWS/Lambda","Errors","FunctionName","${CreateVehicleFn}"],
+                  ["AWS/Lambda","Errors","FunctionName","${UpdateVehicleFn}"],
+                  ["AWS/Lambda","Errors","FunctionName","${StartPurchaseFn}"]
+                ],
+                "period": 60,
+                "stat": "Sum",
+                "region": "${AWS::Region}"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Step Functions Executions",
+                "view": "timeSeries",
+                "stacked": false,
+                "metrics": [
+                  ["AWS/States","ExecutionsStarted","StateMachineArn","${PurchaseSagaStateMachine}"],
+                  [".","ExecutionsSucceeded",".","."],
+                  [".","ExecutionsFailed",".","."]
+                ],
+                "period": 60,
+                "stat": "Sum",
+                "region": "${AWS::Region}"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  ApiEndpoint:
+    Value: !Sub "https://${VehicleApiV2}.execute-api.${AWS::Region}.amazonaws.com"
+  LocalStackApiEndpoint:
+    Value: !Sub "http://localhost:4566/restapis/${VehicleApiV2}/$default/_user_request_"
+  StateMachineArn:
+    Value: !Ref PurchaseSagaStateMachine
+  SalesQueueUrl:
+    Value: !Ref SalesNotificationsQueue
+  ReservationsTableName:
+    Value: !Ref ReservationsTable
+
+
+
